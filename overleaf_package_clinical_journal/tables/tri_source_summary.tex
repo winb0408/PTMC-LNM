@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\caption{多源融合验证结果汇总（CentralLNM，患者级 5-fold）}
+\label{tab:tri_source}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+设置 & AUC$\pm$Std & ACC & F1 & Sen & Spe & Compliance \\
+\midrule
+ROI Radiomics-only & $0.5756\pm0.0538$ & 0.5566 & 0.6151 & 0.6536 & 0.4417 & -- \\
+Clinical+ROI Radiomics & $0.6923\pm0.0696$ & 0.6330 & 0.6672 & 0.6839 & \textbf{0.5729} & -- \\
+Deep+Clinical（ViT-B/16） & $\mathbf{0.7104\pm0.0253}$ & 0.6289 & 0.6686 & 0.6969 & 0.5490 & $\mathbf{0.9512\pm0.0626}$ \\
+Tri-Fusion（ViT-B/16） & $0.6404\pm0.0496$ & 0.5779 & 0.6478 & \textbf{0.7220} & 0.4077 & $0.9398\pm0.0621$ \\
+\bottomrule
+\end{tabular}
+\end{table}

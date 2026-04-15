@@ -1,0 +1,14 @@
+\begin{table}[H]
+\centering
+\caption{ROI radiomics 两条路径的最佳结果汇总（患者级 5-fold）}
+\label{tab:traditional_radiomics}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+路径 & 最佳模型 & AUC Mean$\pm$Std & ACC & F1 & Sen & Spe \\
+\midrule
+ROI Radiomics-only & LogReg & $0.5756\pm0.0538$ & 0.5566 & 0.6151 & 0.6536 & 0.4417 \\
+Clinical+ROI Radiomics & SoftVoting & $0.6923\pm0.0696$ & 0.6330 & 0.6672 & 0.6839 & 0.5729 \\
+\bottomrule
+\end{tabular}
+\end{table}

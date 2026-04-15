@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\caption{五组消融的全指标对照（CentralLNM，患者级 5-fold）}
+\label{tab:ablation_full_metrics}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+设置 & AUC & ACC & F1 & Sen & Spe & Compliance \\
+\midrule
+Base-B（SliceMean+Concat） & $0.6724\pm0.0326$ & 0.6291 & 0.6881 & 0.7567 & 0.4786 & $0.4464\pm0.2409$ \\
+Abl-1（MeanMIL+Gated） & $0.6891\pm0.0419$ & 0.6266 & 0.6213 & 0.6034 & 0.6562 & $0.9883\pm0.0105$ \\
+Abl-2（AttMIL+Concat） & $0.6672\pm0.0360$ & 0.5988 & 0.6081 & 0.5989 & 0.6001 & $0.9930\pm0.0093$ \\
+Abl-3（NoPrior） & $0.6632\pm0.0235$ & 0.6035 & 0.6152 & 0.6035 & 0.6040 & $0.6518\pm0.0476$ \\
+Ours（ViT-B/16） & $\mathbf{0.7104\pm0.0253}$ & 0.6289 & 0.6686 & 0.6969 & 0.5490 & $0.9512\pm0.0626$ \\
+\bottomrule
+\end{tabular}
+\end{table}

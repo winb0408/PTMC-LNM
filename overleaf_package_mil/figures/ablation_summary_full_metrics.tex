@@ -1,0 +1,18 @@
+\begin{table}
+\centering
+\caption{六组消融的全指标对照（5-fold test）}
+\label{tab:ablation_full_metrics}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+                                  设置 &             AUC &      ACC &       F1 &  Sensitivity &  Specificity &      Compliance \\
+\midrule
+                      Base-A (Clin) & 0.667$\pm$0.033 & 0.610274 & 0.626488 &     0.625069 &     0.592692 & 0.716$\pm$0.140 \\
+               Base-B (SliceMean+Cat) & 0.671$\pm$0.025 & 0.596343 & 0.662652 &     0.735430 &     0.432051 & 0.667$\pm$0.151 \\
+                     Abl-1 (MeanMIL+G) & 0.678$\pm$0.032 & 0.626499 & 0.632109 &     0.607493 &     0.650385 & 0.995$\pm$0.006 \\
+                     Abl-2 (AttMIL+Cat) & 0.667$\pm$0.029 & 0.614761 & 0.656433 &     0.684181 &     0.532692 & 0.995$\pm$0.006 \\
+                      Abl-3 (NoPrior) & 0.672$\pm$0.025 & 0.587122 & 0.638122 &     0.693247 &     0.462308 & 0.573$\pm$0.151 \\
+                        Ours (AttMIL+G+P) & 0.696$\pm$0.012 & 0.624359 & 0.674504 &     0.717761 &     0.513718 & 0.977$\pm$0.032 \\
+\bottomrule
+\end{tabular}
+\end{table}

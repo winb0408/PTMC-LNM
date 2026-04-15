@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\caption{相对原始临床基线的增量价值总结（CentralLNM，患者级 5-fold）}
+\label{tab:incremental_value}
+\small
+\begin{tabular}{lccc}
+\toprule
+路径 & AUC$\pm$Std & $\Delta$AUC vs Baseline & 波动变化 \\
+\midrule
+原始临床 Logistic & $0.6859\pm0.0658$ & 参考 & 参考 \\
+ROI Radiomics-only & $0.5756\pm0.0538$ & $-0.1103$ & 略下降 \\
+Clinical+ROI Radiomics & $0.6923\pm0.0696$ & $+0.0064$ & 略上升 \\
+Deep+Clinical（ViT-B/16） & $\mathbf{0.7104\pm0.0253}$ & $\mathbf{+0.0245}$ & 明显下降 \\
+Tri-Fusion（ViT-B/16） & $0.6404\pm0.0496$ & $-0.0455$ & 下降 \\
+\bottomrule
+\end{tabular}
+\end{table}

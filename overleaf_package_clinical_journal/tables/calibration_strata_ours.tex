@@ -1,0 +1,21 @@
+\begin{table}[H]
+\centering
+\caption{ViT-B/16 完整模型的 CentralLNM 风险分层表现}
+\label{tab:calib_strata}
+\small
+\begin{tabular}{p{0.24\textwidth}ccc}
+\toprule
+风险分层（$\hat{p}_{central}$） & $N$ & 阳性例数 & 观察阳性率 \\ 
+\midrule
+0.1$\sim$0.2 & 2 & 0 & 0.000 \\ 
+0.2$\sim$0.3 & 14 & 6 & 0.429 \\ 
+0.3$\sim$0.4 & 60 & 20 & 0.333 \\ 
+0.4$\sim$0.5 & 103 & 45 & 0.437 \\ 
+0.5$\sim$0.6 & 97 & 45 & 0.464 \\ 
+0.6$\sim$0.7 & 93 & 66 & 0.710 \\ 
+0.7$\sim$0.8 & 45 & 38 & 0.844 \\ 
+0.8$\sim$0.9 & 13 & 10 & 0.769 \\ 
+0.9$\sim$1.0 & 4 & 4 & 1.000 \\ 
+\bottomrule
+\end{tabular}
+\end{table}

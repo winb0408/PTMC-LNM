@@ -1,0 +1,27 @@
+\begin{table}[H]
+\centering
+\caption{ROI radiomics 多模型比较（仅保留两条 pipeline，按 AUC 均值降序）}
+\label{tab:traditional_multimodel}
+\small
+\begin{tabular}{llc}
+\toprule
+Pipeline & 模型 & AUC Mean$\pm$Std \\
+\midrule
+Clinical+ROI Radiomics & SoftVoting & $0.6923\pm0.0696$ \\
+Clinical+ROI Radiomics & RandomForest & $0.6901\pm0.0486$ \\
+Clinical+ROI Radiomics & Stacking & $0.6864\pm0.0741$ \\
+Clinical+ROI Radiomics & LogReg & $0.6848\pm0.0785$ \\
+Clinical+ROI Radiomics & ExtraTrees & $0.6775\pm0.0628$ \\
+Clinical+ROI Radiomics & SVM(RBF) & $0.6745\pm0.0448$ \\
+Clinical+ROI Radiomics & AdaBoost & $0.5846\pm0.0428$ \\
+\midrule
+ROI Radiomics-only & LogReg & $0.5756\pm0.0538$ \\
+ROI Radiomics-only & Stacking & $0.5735\pm0.0520$ \\
+ROI Radiomics-only & SVM(RBF) & $0.5735\pm0.0422$ \\
+ROI Radiomics-only & SoftVoting & $0.5665\pm0.0550$ \\
+ROI Radiomics-only & RandomForest & $0.5521\pm0.0458$ \\
+ROI Radiomics-only & ExtraTrees & $0.5359\pm0.0616$ \\
+ROI Radiomics-only & AdaBoost & $0.5298\pm0.0547$ \\
+\bottomrule
+\end{tabular}
+\end{table}

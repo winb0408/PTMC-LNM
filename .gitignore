@@ -1,0 +1,38 @@
+.idea/
+**/.idea/
+**/idea/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Large local datasets and experiment artifacts
+data/
+trained_models/
+aris_runs/
+results/
+
+# Training outputs and checkpoints
+HCP-Fusion Net/checkpoints*/
+HCP-Fusion Net/v2_mil_gated/checkpoints*/
+**/checkpoints*/
+*.out
+*.log
+*.npz
+*.npy
+*.o
+*.so
+*.egg
+*.mexa64
+*.mexmaci64
+*.zip
+
+# Papers and local reference materials
+References/
+
+# Third-party build artifacts / packaged outputs
+**/build/
+**/dist/
+**/*.egg-info/
+
+# Local editor / OS artifacts
+.DS_Store

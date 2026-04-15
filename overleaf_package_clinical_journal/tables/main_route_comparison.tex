@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\caption{CentralLNM 主文核心路径的统一比较}
+\label{tab:main_route_comparison}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccccc}
+\toprule
+方法 & AUC Mean$\pm$Std & ACC & F1 & Sen & Spe & Compliance \\
+\midrule
+原始临床 Logistic（Baseline） & $0.6859\pm0.0658$ & 0.6332 & 0.6661 & 0.6712 & 0.5881 & -- \\
+ROI Radiomics-only & $0.5756\pm0.0538$ & 0.5566 & 0.6151 & 0.6536 & 0.4417 & -- \\
+Clinical+ROI Radiomics & $0.6923\pm0.0696$ & 0.6330 & 0.6672 & 0.6839 & 0.5729 & -- \\
+Ours（ViT-B/16） & $\mathbf{0.7104\pm0.0253}$ & 0.6289 & 0.6686 & 0.6969 & 0.5490 & $0.9512\pm0.0626$ \\
+\bottomrule
+\end{tabular}
+\end{table}

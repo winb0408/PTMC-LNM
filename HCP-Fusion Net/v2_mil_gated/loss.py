@@ -49,20 +49,24 @@ class DualTaskLoss(nn.Module):
         lambda_lnm: float = 1.0,
         lambda_central: float = 1.0,
         penalty_alpha: float = 1.0,
+        conditional_loss_alpha: float = 0.0,
+        evidence_entropy_alpha: float = 0.0,
     ):
         super().__init__()
         self.lambda_lnm = lambda_lnm
         self.lambda_central = lambda_central
         self.penalty_alpha = penalty_alpha
+        self.conditional_loss_alpha = conditional_loss_alpha
+        self.evidence_entropy_alpha = evidence_entropy_alpha
         self.bce = nn.BCEWithLogitsLoss(reduction='mean')
         self.penalty_fn = PriorConstraintLoss()
 
     def forward(
         self,
-        logit_lnm: torch.Tensor,
-        logit_central: torch.Tensor,
-        y_lnm: torch.Tensor,
-        y_central: torch.Tensor,
+        out_or_logit_lnm,
+        logit_central_or_y_lnm=None,
+        y_lnm: torch.Tensor = None,
+        y_central: torch.Tensor = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Returns:
@@ -73,10 +77,33 @@ class DualTaskLoss(nn.Module):
                 'loss_total':   标量 (用于 backward),
             }
         """
-        loss_lnm = self.bce(logit_lnm, y_lnm)
-        loss_central = self.bce(logit_central, y_central)
+        if isinstance(out_or_logit_lnm, dict):
+            out = out_or_logit_lnm
+            logit_lnm = out['logit_lnm']
+            logit_central = out['logit_central']
+            y_lnm_target = logit_central_or_y_lnm
+            y_central_target = y_lnm
+        else:
+            out = {}
+            logit_lnm = out_or_logit_lnm
+            logit_central = logit_central_or_y_lnm
+            y_lnm_target = y_lnm
+            y_central_target = y_central
+
+        loss_lnm = self.bce(logit_lnm, y_lnm_target)
+        loss_central = self.bce(logit_central, y_central_target)
 
         total = self.lambda_lnm * loss_lnm + self.lambda_central * loss_central
+
+        if self.conditional_loss_alpha > 0 and 'logit_central_cond' in out:
+            pos_mask = (y_lnm_target > 0.5)
+            if pos_mask.any():
+                loss_cond = self.bce(out['logit_central_cond'][pos_mask], y_central_target[pos_mask])
+                total = total + self.conditional_loss_alpha * loss_cond
+            else:
+                loss_cond = torch.tensor(0.0, device=logit_lnm.device)
+        else:
+            loss_cond = torch.tensor(0.0, device=logit_lnm.device)
 
         if self.penalty_alpha > 0:
             loss_pen = self.penalty_fn(logit_central, logit_lnm)
@@ -84,9 +111,18 @@ class DualTaskLoss(nn.Module):
         else:
             loss_pen = torch.tensor(0.0, device=logit_lnm.device)
 
+        if self.evidence_entropy_alpha > 0 and out.get('evidence_weights', None) is not None:
+            w = out['evidence_weights'].clamp(min=1e-8)
+            entropy = -(w * torch.log(w)).sum(dim=1).mean()
+            total = total - self.evidence_entropy_alpha * entropy
+        else:
+            entropy = torch.tensor(0.0, device=logit_lnm.device)
+
         return {
             'loss_lnm': loss_lnm,
             'loss_central': loss_central,
+            'loss_conditional': loss_cond,
             'loss_penalty': loss_pen,
+            'loss_evidence_entropy': entropy,
             'loss_total': total,
         }

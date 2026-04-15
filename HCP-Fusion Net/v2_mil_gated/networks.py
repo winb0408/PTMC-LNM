@@ -410,6 +410,67 @@ class ConcatFusion(nn.Module):
         return self.mlp(torch.cat([H_clin, H_img], dim=1))  # [B, D]
 
 
+class EvidenceMoEFusion(nn.Module):
+    """
+    个体化证据融合：
+    - clinical / deep / radiomics 各自先投影到共享空间
+    - 用患者级上下文生成证据权重
+    - 对不同患者动态选择更可信的证据来源
+    """
+
+    def __init__(self, dim: int, hidden_dim: int = 128, dropout: float = 0.3):
+        super().__init__()
+        self.clin_proj = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.BatchNorm1d(dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+        )
+        self.deep_proj = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.BatchNorm1d(dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+        )
+        self.rad_proj = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.BatchNorm1d(dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+        )
+        self.score_mlp = nn.Sequential(
+            nn.Linear(dim * 3, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(hidden_dim, 3),
+        )
+
+    def forward(
+        self,
+        H_clin: torch.Tensor,
+        H_img: torch.Tensor,
+        H_rad: Optional[torch.Tensor] = None,
+        temperature: float = 1.0,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        z_clin = self.clin_proj(H_clin)
+        z_deep = self.deep_proj(H_img)
+        if H_rad is None:
+            z_rad = torch.zeros_like(z_clin)
+            valid_mask = torch.tensor([True, True, False], device=H_clin.device).view(1, 3)
+        else:
+            z_rad = self.rad_proj(H_rad)
+            valid_mask = torch.tensor([True, True, True], device=H_clin.device).view(1, 3)
+
+        context = torch.cat([z_clin, z_deep, z_rad], dim=1)
+        score = self.score_mlp(context)
+        score = score.masked_fill(~valid_mask, -1e4)
+        attn = torch.softmax(score / max(float(temperature), 1e-6), dim=1)
+
+        evidence_stack = torch.stack([z_clin, z_deep, z_rad], dim=1)  # [B, 3, D]
+        fused = torch.sum(attn.unsqueeze(-1) * evidence_stack, dim=1)
+        return fused, attn, evidence_stack
+
+
 # =============================================================================
 # ⑤ Multi-task Classification Heads
 # =============================================================================
@@ -437,6 +498,47 @@ class DualHead(nn.Module):
         return self.head_lnm(h).squeeze(-1), self.head_central(h).squeeze(-1)
 
 
+class HierarchicalHead(nn.Module):
+    """
+    层级结构建模：
+    1) 先预测 P(LNM)
+    2) 再预测 P(CentralLNM | LNM)
+    3) 最终 P(CentralLNM) = P(LNM) * P(CentralLNM | LNM)
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int = 64, dropout: float = 0.2):
+        super().__init__()
+        self.head_lnm = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.cond_head = nn.Sequential(
+            nn.Linear(input_dim + 1, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, h: torch.Tensor) -> Dict[str, torch.Tensor]:
+        logit_lnm = self.head_lnm(h).squeeze(-1)
+        p_lnm = torch.sigmoid(logit_lnm)
+        cond_in = torch.cat([h, p_lnm.unsqueeze(-1)], dim=1)
+        logit_cond = self.cond_head(cond_in).squeeze(-1)
+        p_cond = torch.sigmoid(logit_cond)
+        p_central = (p_lnm * p_cond).clamp(min=1e-6, max=1 - 1e-6)
+        logit_central = torch.logit(p_central)
+        return {
+            'logit_lnm': logit_lnm,
+            'logit_central': logit_central,
+            'prob_lnm': p_lnm,
+            'prob_central': p_central,
+            'logit_central_cond': logit_cond,
+            'prob_central_cond': p_cond,
+        }
+
+
 # =============================================================================
 # ⑥ 完整模型（支持所有消融模式）
 # =============================================================================
@@ -457,7 +559,10 @@ class MultiModalMILGatedNet(nn.Module):
         super().__init__()
         self.model_mode = opt.model_mode
         self.use_radiomics = bool(getattr(opt, 'use_radiomics', False))
+        self.head_mode = getattr(opt, 'head_mode', 'legacy')
+        self.fusion_mode = getattr(opt, 'fusion_mode', 'legacy')
         self.radiomics_fusion_mode = getattr(opt, 'radiomics_fusion_mode', 'legacy')
+        self.evidence_temperature = float(getattr(opt, 'evidence_temperature', 1.0))
         D = opt.hidden_dim
 
         # ── 临床编码器（所有模式都需要，除了可以不用时跳过）──
@@ -469,7 +574,13 @@ class MultiModalMILGatedNet(nn.Module):
         if self.use_radiomics:
             if getattr(opt, 'radiomics_input_dim', 0) <= 0:
                 raise ValueError('use_radiomics=True 但 radiomics_input_dim <= 0，请先生成 fold 级 radiomics 特征')
-            if self.radiomics_fusion_mode == 'align_proj':
+            if self.fusion_mode == 'evidence_moe':
+                self.radiomics_encoder = RadiomicsEncoder(
+                    input_dim=opt.radiomics_input_dim,
+                    hidden_dim=D,
+                    dropout=opt.dropout,
+                )
+            elif self.radiomics_fusion_mode == 'align_proj':
                 P = int(getattr(opt, 'rad_proj_dim', 128))
                 self.deep_aligner = nn.Sequential(
                     nn.Linear(D, P),
@@ -547,13 +658,26 @@ class MultiModalMILGatedNet(nn.Module):
             use_gating = opt.model_mode in (
                 'mean_mil_gated', 'attention_mil_gated',
             )
-            if use_gating:
+            if self.fusion_mode == 'evidence_moe':
+                self.fusion = EvidenceMoEFusion(
+                    dim=D,
+                    hidden_dim=int(getattr(opt, 'evidence_hidden_dim', 128)),
+                    dropout=opt.dropout,
+                )
+            elif use_gating:
                 self.fusion = GatedFusion(D)
             else:
                 self.fusion = ConcatFusion(D, opt.dropout)
 
         # ── 分类头 ──
-        self.dual_head = DualHead(D, hidden_dim=64, dropout=opt.dropout)
+        if self.head_mode == 'hierarchical':
+            self.dual_head = HierarchicalHead(
+                D,
+                hidden_dim=int(getattr(opt, 'hierarchical_hidden_dim', 64)),
+                dropout=opt.dropout,
+            )
+        else:
+            self.dual_head = DualHead(D, hidden_dim=64, dropout=opt.dropout)
 
         self._print_summary(opt)
 
@@ -564,6 +688,7 @@ class MultiModalMILGatedNet(nn.Module):
         print(f'  MultiModalMILGatedNet  mode={self.model_mode}')
         print(f'  hidden_dim={opt.hidden_dim}  backbone={opt.backbone}')
         print(f'  use_radiomics={self.use_radiomics}')
+        print(f'  head_mode={self.head_mode}  fusion_mode={self.fusion_mode}')
         if self.use_radiomics:
             print(f'  radiomics_fusion_mode={self.radiomics_fusion_mode}')
         print(f'  params: total={total:,}  trainable={trainable:,}')
@@ -601,11 +726,21 @@ class MultiModalMILGatedNet(nn.Module):
 
         if not self.need_image:
             # ── clinical_only ──
-            logit_lnm, logit_central = self.dual_head(H_clin)
+            head_out = self.dual_head(H_clin)
+            if self.head_mode == 'hierarchical':
+                head_out['attn_weights'] = None
+                head_out['evidence_weights'] = None
+                head_out['evidence_stack'] = None
+                head_out['fused_feature'] = H_clin
+                return head_out
+            logit_lnm, logit_central = head_out
             return {
                 'logit_lnm': logit_lnm,
                 'logit_central': logit_central,
                 'attn_weights': None,
+                'evidence_weights': None,
+                'evidence_stack': None,
+                'fused_feature': H_clin,
             }
 
         bag = batch['bag']    # [B, N, C, H, W]
@@ -619,8 +754,11 @@ class MultiModalMILGatedNet(nn.Module):
 
         # ── MIL 聚合 ──
         H_img, attn_weights = self.mil_pool(h_all, mask)  # [B, D], [B, N]
+        H_rad = None
         if X_rad is not None:
-            if self.radiomics_fusion_mode == 'align_proj':
+            if self.fusion_mode == 'evidence_moe':
+                H_rad = self.radiomics_encoder(X_rad)
+            elif self.radiomics_fusion_mode == 'align_proj':
                 # 方案一：深度/组学先投影到共享空间，再映射回图像语义空间
                 Z_deep = self.deep_aligner(H_img)  # [B, P]
                 Z_rad = self.rad_aligner(X_rad)    # [B, P]
@@ -640,15 +778,34 @@ class MultiModalMILGatedNet(nn.Module):
                 H_img = self.image_mixer(torch.cat([H_img, H_rad], dim=1))
 
         # ── 融合 ──
-        H_final = self.fusion(H_clin, H_img)  # [B, D]
+        evidence_weights = None
+        evidence_stack = None
+        if self.fusion_mode == 'evidence_moe':
+            H_final, evidence_weights, evidence_stack = self.fusion(
+                H_clin, H_img, H_rad, temperature=self.evidence_temperature,
+            )
+        else:
+            H_final = self.fusion(H_clin, H_img)  # [B, D]
 
         # ── 分类 ──
-        logit_lnm, logit_central = self.dual_head(H_final)
+        head_out = self.dual_head(H_final)
+        if self.head_mode == 'hierarchical':
+            head_out.update({
+                'attn_weights': attn_weights,
+                'evidence_weights': evidence_weights,
+                'evidence_stack': evidence_stack,
+                'fused_feature': H_final,
+            })
+            return head_out
 
+        logit_lnm, logit_central = head_out
         return {
             'logit_lnm': logit_lnm,
             'logit_central': logit_central,
             'attn_weights': attn_weights,
+            'evidence_weights': evidence_weights,
+            'evidence_stack': evidence_stack,
+            'fused_feature': H_final,
         }
 
     def get_parameter_groups(self, opt) -> List[Dict]:

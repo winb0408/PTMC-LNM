@@ -110,7 +110,9 @@ def evaluate(
     model.eval()
     all_y_lnm, all_p_lnm = [], []
     all_y_cen, all_p_cen = [], []
+    all_p_cen_cond = []
     all_pids = []
+    all_evidence_weights = []
 
     for batch in loader:
         # 移至 GPU
@@ -124,32 +126,49 @@ def evaluate(
         with autocast(enabled=use_amp):
             out = model(batch_gpu)
 
-        p_lnm = torch.sigmoid(out['logit_lnm']).cpu().numpy()
-        p_cen = torch.sigmoid(out['logit_central']).cpu().numpy()
+        if 'prob_lnm' in out:
+            p_lnm = out['prob_lnm'].detach().cpu().numpy()
+        else:
+            p_lnm = torch.sigmoid(out['logit_lnm']).cpu().numpy()
+        if 'prob_central' in out:
+            p_cen = out['prob_central'].detach().cpu().numpy()
+        else:
+            p_cen = torch.sigmoid(out['logit_central']).cpu().numpy()
+        if 'prob_central_cond' in out:
+            p_cen_cond = out['prob_central_cond'].detach().cpu().numpy()
+        else:
+            p_cen_cond = np.full_like(p_cen, np.nan)
         y_lnm = batch['y_lnm'].numpy()
         y_cen = batch['y_central'].numpy()
 
         all_p_lnm.extend(p_lnm.tolist())
         all_p_cen.extend(p_cen.tolist())
+        all_p_cen_cond.extend(p_cen_cond.tolist())
         all_y_lnm.extend(y_lnm.tolist())
         all_y_cen.extend(y_cen.tolist())
         all_pids.extend(batch['pid'])
+        if out.get('evidence_weights', None) is not None:
+            all_evidence_weights.append(out['evidence_weights'].detach().cpu().numpy())
 
     y_lnm = np.array(all_y_lnm)
     p_lnm = np.array(all_p_lnm)
     y_cen = np.array(all_y_cen)
     p_cen = np.array(all_p_cen)
+    p_cen_cond = np.array(all_p_cen_cond)
 
     m_central = compute_metrics(y_cen, p_cen)
     m_lnm = compute_metrics(y_lnm, p_lnm)
     compliance = compute_logical_compliance(p_cen, p_lnm)
+    evidence_weights = np.concatenate(all_evidence_weights, axis=0) if all_evidence_weights else np.zeros((0, 3), dtype=np.float32)
 
     return {
         'central': m_central,
         'lnm': m_lnm,
         'compliance': compliance,
         'y_central': y_cen, 'p_central': p_cen,
+        'p_central_cond': p_cen_cond,
         'y_lnm': y_lnm, 'p_lnm': p_lnm,
+        'evidence_weights': evidence_weights,
         'pids': all_pids,
     }
 
@@ -208,6 +227,8 @@ def train_one_fold(
         lambda_lnm=opt.lambda_lnm,
         lambda_central=opt.lambda_central,
         penalty_alpha=opt.penalty_alpha,
+        conditional_loss_alpha=getattr(opt, 'conditional_loss_alpha', 0.0),
+        evidence_entropy_alpha=getattr(opt, 'evidence_entropy_alpha', 0.0),
     )
 
     # ── AMP ──
@@ -250,10 +271,7 @@ def train_one_fold(
 
             with autocast(enabled=opt.amp):
                 out = model(batch_gpu)
-                loss_dict = criterion(
-                    out['logit_lnm'], out['logit_central'],
-                    y_lnm, y_cen,
-                )
+                loss_dict = criterion(out, y_lnm, y_cen)
 
             scaler.scale(loss_dict['loss_total']).backward()
 
@@ -295,7 +313,7 @@ def train_one_fold(
         })
 
         # ── Early stopping / best model ──
-        if val_auc_central == val_auc_central and val_auc_central > best_val_auc:
+        if np.isfinite(val_auc_central) and val_auc_central > best_val_auc:
             best_val_auc = val_auc_central
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             patience_counter = 0
@@ -326,8 +344,10 @@ def train_one_fold(
         os.path.join(fold_dir, 'predictions.npz'),
         y_central=test_result['y_central'],
         p_central=test_result['p_central'],
+        p_central_cond=test_result['p_central_cond'],
         y_lnm=test_result['y_lnm'],
         p_lnm=test_result['p_lnm'],
+        evidence_weights=test_result['evidence_weights'],
         pids=test_result['pids'],
     )
 
@@ -477,6 +497,8 @@ def main():
 
     summary = {
         'model_mode': opt.model_mode,
+        'head_mode': getattr(opt, 'head_mode', 'legacy'),
+        'fusion_mode': getattr(opt, 'fusion_mode', 'legacy'),
         'penalty_alpha': opt.penalty_alpha,
         'backbone': opt.backbone,
         'folds': opt.folds,

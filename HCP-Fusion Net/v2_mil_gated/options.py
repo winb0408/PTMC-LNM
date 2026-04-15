@@ -94,6 +94,22 @@ def get_parser():
     g.add_argument('--attn_dim', type=int, default=128,
                    help='Attention 网络内部维度')
     g.add_argument('--dropout', type=float, default=0.3)
+    g.add_argument('--head_mode', type=str, default='legacy',
+                   choices=['legacy', 'hierarchical'],
+                   help='legacy=原双头；hierarchical=先预测LNM再预测CentralLNM条件概率')
+    g.add_argument('--fusion_mode', type=str, default='legacy',
+                   choices=['legacy', 'evidence_moe'],
+                   help='legacy=沿用原图像/临床融合；evidence_moe=患者级个体化证据加权融合')
+    g.add_argument('--hierarchical_hidden_dim', type=int, default=64,
+                   help='层级输出头内部隐藏层维度')
+    g.add_argument('--conditional_loss_alpha', type=float, default=0.5,
+                   help='层级输出头中条件概率分支的辅助监督权重')
+    g.add_argument('--evidence_hidden_dim', type=int, default=128,
+                   help='个体化证据融合中证据投影与打分网络的隐藏层维度')
+    g.add_argument('--evidence_entropy_alpha', type=float, default=0.01,
+                   help='个体化证据融合的熵奖励系数，>0时轻度抑制单一路证据塌缩')
+    g.add_argument('--evidence_temperature', type=float, default=1.0,
+                   help='个体化证据融合 softmax 温度')
     g.add_argument('--radiomics_fusion_mode', type=str, default='legacy',
                    choices=['legacy', 'align_proj', 'film'],
                    help='legacy=原拼接融合；align_proj=深度/组学对齐投影；film=组学调制深度特征')

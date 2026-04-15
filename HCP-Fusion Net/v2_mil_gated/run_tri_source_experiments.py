@@ -35,6 +35,9 @@ def parse_args():
     p.add_argument('--run_radiomics', action='store_true')
     p.add_argument('--run_v1', action='store_true')
     p.add_argument('--run_v2', action='store_true')
+    p.add_argument('--run_ac', action='store_true')
+    p.add_argument('--head_mode', type=str, default='hierarchical')
+    p.add_argument('--fusion_mode', type=str, default='evidence_moe')
     return p.parse_args()
 
 
@@ -117,6 +120,28 @@ def main():
             '--modalities', 'B', 'VUSE', 'VCEUS',
             '--use_radiomics', 'True',
             '--radiomics_root', rad_root,
+        ]
+        run_cmd_with_pretrain_fallback(cmd)
+
+    if args.run_ac:
+        cmd = [
+            args.python,
+            os.path.join(os.path.dirname(__file__), 'train.py'),
+            '--data_root', args.data_root,
+            '--groups_root', 'groups_cv5_central',
+            '--save_dir', args.save_dir,
+            '--exp_name', 'ours_v3_hier_evidence_effb0',
+            '--model_mode', 'attention_mil_gated',
+            '--backbone', 'efficientnet_b0',
+            '--pretrained', args.pretrained,
+            '--epochs', str(args.epochs),
+            '--folds', str(args.folds),
+            '--gpu_id', str(args.gpu_id),
+            '--modalities', 'B', 'VUSE', 'VCEUS',
+            '--use_radiomics', 'True',
+            '--radiomics_root', rad_root,
+            '--head_mode', args.head_mode,
+            '--fusion_mode', args.fusion_mode,
         ]
         run_cmd_with_pretrain_fallback(cmd)
 

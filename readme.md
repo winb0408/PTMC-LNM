@@ -805,3 +805,107 @@ cd /data2/wjb/code/PTMC_LNM/HCP-Fusion\ Net/v2_mil_gated
 1. 先把论文主问题改成“影像是否带来稳定增量价值”
 2. 再做一个真正可写成创新点的方法
 3. 最后补齐高质量期刊最看重的临床证据
+
+---
+
+## 十八、A+C 结构升级实现（新增）
+
+为了把 `PUBLICATION_UPGRADE_STRATEGY.md` 中最值得优先推进的路线真正落到代码里，当前已在：
+
+- `HCP-Fusion Net/v2_mil_gated/`
+
+中新增两类核心能力：
+
+### 1) 路线 A：层级结构建模
+
+新增参数：
+
+- `--head_mode legacy|hierarchical`
+
+其中：
+
+- `legacy`：沿用原双头输出
+- `hierarchical`：先预测 `LNM`，再预测 `CentralLNM | LNM`，最终组合得到 `P(CentralLNM)`
+
+当前实现文件：
+
+- `HCP-Fusion Net/v2_mil_gated/networks.py`
+- `HCP-Fusion Net/v2_mil_gated/loss.py`
+
+### 2) 路线 C：个体化证据融合
+
+新增参数：
+
+- `--fusion_mode legacy|evidence_moe`
+
+其中：
+
+- `legacy`：沿用原来的临床主导门控/拼接融合
+- `evidence_moe`：显式区分 `clinical / deep / radiomics` 三路证据，并学习患者级动态权重
+
+同时新增相关超参数：
+
+- `--evidence_hidden_dim`
+- `--evidence_entropy_alpha`
+- `--evidence_temperature`
+- `--conditional_loss_alpha`
+
+### 3) 当前兼容性说明
+
+当前设计遵循“兼容扩展”原则：
+
+- 旧模式仍可直接运行
+- 新模式是通过额外开关启用，不会破坏已有 `legacy / align_proj / FiLM` 结果目录
+- `summary.json/csv`、`predictions.npz`、ROC 绘图链路仍然保留
+
+### 4) 最小运行示例
+
+#### 4.1 旧模式 smoke
+
+```bash
+cd /data2/wjb/code/PTMC_LNM
+/data2/wjb/anaconda3/envs/pumc/bin/python "HCP-Fusion Net/v2_mil_gated/train.py" \
+  --data_root "/data2/wjb/code/PTMC_LNM/data/MultiModalDataset" \
+  --groups_root groups_cv5_central \
+  --save_dir "HCP-Fusion Net/v2_mil_gated/checkpoints_v2_ac_smoke" \
+  --exp_name legacy_smoke_resnet18 \
+  --model_mode attention_mil_gated \
+  --backbone resnet18 \
+  --pretrained False \
+  --epochs 1 \
+  --folds 1 \
+  --gpu_id 0 \
+  --num_workers 0
+```
+
+#### 4.2 A+C 新模式 smoke
+
+```bash
+cd /data2/wjb/code/PTMC_LNM
+/data2/wjb/anaconda3/envs/pumc/bin/python "HCP-Fusion Net/v2_mil_gated/train.py" \
+  --data_root "/data2/wjb/code/PTMC_LNM/data/MultiModalDataset" \
+  --groups_root groups_cv5_central \
+  --save_dir "HCP-Fusion Net/v2_mil_gated/checkpoints_v2_ac_smoke" \
+  --exp_name ac_smoke_resnet18 \
+  --model_mode attention_mil_gated \
+  --backbone resnet18 \
+  --pretrained False \
+  --epochs 1 \
+  --folds 1 \
+  --gpu_id 0 \
+  --num_workers 0 \
+  --use_radiomics True \
+  --radiomics_root "/data2/wjb/code/PTMC_LNM/HCP-Fusion Net/checkpoints_roi_radiomics/central_roi_radiomics_cv5" \
+  --head_mode hierarchical \
+  --fusion_mode evidence_moe
+```
+
+### 5) 三源实验入口
+
+`run_tri_source_experiments.py` 现在还新增了：
+
+- `--run_ac`
+- `--head_mode`
+- `--fusion_mode`
+
+可用于在原有 `V1 / V2` 之外，额外拉起一条 A+C 新结构实验。
